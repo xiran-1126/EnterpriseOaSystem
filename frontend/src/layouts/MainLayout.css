@@ -1,0 +1,81 @@
+.main-layout {
+  min-height: 100vh;
+}
+
+.layout-sider {
+  background: #001529;
+}
+
+.logo {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.logo-icon {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.logo-text {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.layout-header {
+  background: #fff;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  z-index: 10;
+}
+
+.collapse-btn {
+  font-size: 16px;
+  width: 64px;
+  height: 64px;
+}
+
+.header-right {
+  padding-right: 24px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 0 12px;
+  height: 64px;
+  transition: background 0.3s;
+}
+
+.user-info:hover {
+  background: #f5f5f5;
+}
+
+.user-name {
+  font-size: 14px;
+  color: #333;
+}
+
+.layout-content {
+  background: #f0f2f5;
+  min-height: calc(100vh - 64px);
+}

@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.oa.mapper.SysUserMapper">
+
+    <resultMap id="UserVOResultMap" type="com.oa.vo.UserVO">
+        <id column="id" property="id"/>
+        <result column="username" property="username"/>
+        <result column="real_name" property="realName"/>
+        <result column="phone" property="phone"/>
+        <result column="email" property="email"/>
+        <result column="dept_id" property="deptId"/>
+        <result column="dept_name" property="deptName"/>
+        <result column="post_id" property="postId"/>
+        <result column="post_name" property="postName"/>
+        <result column="status" property="status"/>
+        <result column="remark" property="remark"/>
+        <result column="create_time" property="createTime"/>
+    </resultMap>
+
+    <sql id="selectUserVO">
+        SELECT u.id, u.username, u.real_name, u.phone, u.email,
+               u.dept_id, d.dept_name, u.post_id, p.post_name,
+               u.status, u.remark, u.create_time
+        FROM sys_user u
+        LEFT JOIN sys_dept d ON u.dept_id = d.id AND d.deleted = 0
+        LEFT JOIN sys_post p ON u.post_id = p.id AND p.deleted = 0
+    </sql>
+
+    <select id="selectUserPage" resultMap="UserVOResultMap">
+        <include refid="selectUserVO"/>
+        <where>
+            <if test="query.showDeleted == null or query.showDeleted == false">
+                AND u.deleted = 0
+            </if>
+            <if test="query.username != null and query.username != ''">
+                AND u.username LIKE CONCAT('%', #{query.username}, '%')
+            </if>
+            <if test="query.realName != null and query.realName != ''">
+                AND u.real_name LIKE CONCAT('%', #{query.realName}, '%')
+            </if>
+            <if test="query.phone != null and query.phone != ''">
+                AND u.phone LIKE CONCAT('%', #{query.phone}, '%')
+            </if>
+            <if test="query.email != null and query.email != ''">
+                AND u.email LIKE CONCAT('%', #{query.email}, '%')
+            </if>
+            <if test="query.deptId != null">
+                AND u.dept_id = #{query.deptId}
+            </if>
+            <if test="query.postId != null">
+                AND u.post_id = #{query.postId}
+            </if>
+            <if test="query.status != null">
+                AND u.status = #{query.status}
+            </if>
+            <if test="query.startTime != null">
+                AND u.create_time &gt;= #{query.startTime}
+            </if>
+            <if test="query.endTime != null">
+                AND u.create_time &lt;= #{query.endTime}
+            </if>
+        </where>
+        <if test="query.orderByColumn != null and query.orderByColumn != ''">
+            ORDER BY ${query.orderByColumn}
+            <if test="query.isAsc != null and query.isAsc == 'desc'">
+                DESC
+            </if>
+            <if test="query.isAsc == null or query.isAsc != 'desc'">
+                ASC
+            </if>
+        </if>
+        <if test="query.orderByColumn == null or query.orderByColumn == ''">
+            ORDER BY u.create_time DESC
+        </if>
+    </select>
+
+    <select id="selectUserList" resultMap="UserVOResultMap">
+        <include refid="selectUserVO"/>
+        <where>
+            <if test="query.showDeleted == null or query.showDeleted == false">
+                AND u.deleted = 0
+            </if>
+            <if test="query.username != null and query.username != ''">
+                AND u.username LIKE CONCAT('%', #{query.username}, '%')
+            </if>
+            <if test="query.realName != null and query.realName != ''">
+                AND u.real_name LIKE CONCAT('%', #{query.realName}, '%')
+            </if>
+            <if test="query.phone != null and query.phone != ''">
+                AND u.phone LIKE CONCAT('%', #{query.phone}, '%')
+            </if>
+            <if test="query.email != null and query.email != ''">
+                AND u.email LIKE CONCAT('%', #{query.email}, '%')
+            </if>
+            <if test="query.deptId != null">
+                AND u.dept_id = #{query.deptId}
+            </if>
+            <if test="query.postId != null">
+                AND u.post_id = #{query.postId}
+            </if>
+            <if test="query.status != null">
+                AND u.status = #{query.status}
+            </if>
+            <if test="query.startTime != null">
+                AND u.create_time &gt;= #{query.startTime}
+            </if>
+            <if test="query.endTime != null">
+                AND u.create_time &lt;= #{query.endTime}
+            </if>
+        </where>
+        ORDER BY u.create_time DESC
+    </select>
+
+</mapper>
