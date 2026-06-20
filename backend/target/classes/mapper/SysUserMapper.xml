@@ -32,6 +32,12 @@
             <if test="query.showDeleted == null or query.showDeleted == false">
                 AND u.deleted = 0
             </if>
+            <if test="query.deptIds != null and query.deptIds.size() > 0">
+                AND u.dept_id IN
+                <foreach collection="query.deptIds" item="deptId" open="(" separator="," close=")">
+                    #{deptId}
+                </foreach>
+            </if>
             <if test="query.username != null and query.username != ''">
                 AND u.username LIKE CONCAT('%', #{query.username}, '%')
             </if>
@@ -79,6 +85,12 @@
         <where>
             <if test="query.showDeleted == null or query.showDeleted == false">
                 AND u.deleted = 0
+            </if>
+            <if test="query.deptIds != null and query.deptIds.size() > 0">
+                AND u.dept_id IN
+                <foreach collection="query.deptIds" item="deptId" open="(" separator="," close=")">
+                    #{deptId}
+                </foreach>
             </if>
             <if test="query.username != null and query.username != ''">
                 AND u.username LIKE CONCAT('%', #{query.username}, '%')

@@ -2,7 +2,11 @@ package com.oa.service;
 
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.RandomUtil;
+import cn.hutool.core.util.ReUtil;
 import cn.hutool.core.util.StrUtil;
+import com.alibaba.excel.EasyExcel;
+import com.alibaba.excel.ExcelWriter;
+import com.alibaba.excel.write.metadata.WriteSheet;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -12,6 +16,8 @@ import com.oa.dto.CreateUserDTO;
 import com.oa.dto.ResetUserPasswordDTO;
 import com.oa.dto.UpdateUserDTO;
 import com.oa.dto.UserQueryDTO;
+import com.oa.security.LoginUser;
+import com.oa.security.TokenService;
 import com.oa.entity.SysDept;
 import com.oa.entity.SysPost;
 import com.oa.entity.SysRole;
@@ -22,17 +28,26 @@ import com.oa.mapper.SysPostMapper;
 import com.oa.mapper.SysRoleMapper;
 import com.oa.mapper.SysUserMapper;
 import com.oa.mapper.SysUserRoleMapper;
+import com.oa.vo.ImportError;
+import com.oa.vo.ImportResultVO;
 import com.oa.vo.PageResult;
+import com.oa.vo.UserImportVO;
 import com.oa.vo.UserVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -46,8 +61,22 @@ public class SysUserService {
     private final SysDeptMapper sysDeptMapper;
     private final SysPostMapper sysPostMapper;
     private final PasswordEncoder passwordEncoder;
+    private final TokenService tokenService;
+    private final SysConfigService sysConfigService;
 
-    public PageResult<UserVO> getUserPage(UserQueryDTO query) {
+    public PageResult<UserVO> getUserPage(UserQueryDTO query, LoginUser loginUser) {
+        if (!loginUser.isAdmin()) {
+            if (loginUser.isManager()) {
+                Long deptId = loginUser.getDeptId();
+                if (deptId != null) {
+                    List<Long> deptIds = getChildDeptIds(deptId);
+                    query.setDeptIds(deptIds);
+                }
+            } else {
+                throw new BusinessException(ErrorCode.FORBIDDEN);
+            }
+        }
+
         Page<UserVO> page = new Page<>(query.getPageNum(), query.getPageSize());
         IPage<UserVO> result = sysUserMapper.selectUserPage(page, query);
         
@@ -260,6 +289,11 @@ public class SysUserService {
         user.setUpdateTime(LocalDateTime.now());
         sysUserMapper.updateById(user);
 
+        if (status == 0) {
+            tokenService.invalidateUserTokens(userId);
+            log.info("用户已禁用，强制下线，userId={}", userId);
+        }
+
         log.info("用户状态更新成功，userId={}, status={}", userId, status);
     }
 
@@ -278,7 +312,9 @@ public class SysUserService {
         }
 
         String newPassword = dto.getNewPassword();
-        if (StrUtil.isBlank(newPassword)) {
+        if (StrUtil.isNotBlank(newPassword)) {
+            newPassword = sysConfigService.decryptByPrivateKey(newPassword);
+        } else {
             newPassword = generateRandomPassword();
         }
 
@@ -286,6 +322,9 @@ public class SysUserService {
         user.setUpdateBy(operator);
         user.setUpdateTime(LocalDateTime.now());
         sysUserMapper.updateById(user);
+
+        tokenService.invalidateUserTokens(dto.getUserId());
+        log.info("用户密码重置成功，强制下线，userId={}", dto.getUserId());
 
         log.info("用户密码重置成功，userId={}", dto.getUserId());
         return newPassword;
@@ -303,6 +342,9 @@ public class SysUserService {
         }
 
         sysUserMapper.deleteById(userId);
+
+        tokenService.invalidateUserTokens(userId);
+        log.info("用户删除成功，强制下线，userId={}", userId);
 
         log.info("用户删除成功，userId={}", userId);
     }
@@ -369,6 +411,23 @@ public class SysUserService {
         return new String(chars);
     }
 
+    private List<Long> getChildDeptIds(Long deptId) {
+        List<Long> deptIds = new ArrayList<>();
+        deptIds.add(deptId);
+        getChildDeptIdsRecursive(deptId, deptIds);
+        return deptIds;
+    }
+
+    private void getChildDeptIdsRecursive(Long parentId, List<Long> deptIds) {
+        List<Long> childIds = sysDeptMapper.selectDeptIdsByParentId(parentId);
+        if (childIds != null && !childIds.isEmpty()) {
+            deptIds.addAll(childIds);
+            for (Long childId : childIds) {
+                getChildDeptIdsRecursive(childId, deptIds);
+            }
+        }
+    }
+
     public List<SysDept> getDeptTree() {
         return sysDeptMapper.selectList(
                 new LambdaQueryWrapper<SysDept>()
@@ -389,5 +448,182 @@ public class SysUserService {
                         .eq(SysRole::getStatus, 1)
                         .orderByAsc(SysRole::getId)
         );
+    }
+
+    public byte[] downloadTemplate() {
+        try (ByteArrayOutputStream out = new ByteArrayOutputStream();
+             ExcelWriter excelWriter = EasyExcel.write(out, UserImportVO.class).build()) {
+            WriteSheet writeSheet = EasyExcel.writerSheet("用户导入模板").build();
+            excelWriter.write(new ArrayList<>(), writeSheet);
+            excelWriter.finish();
+            return out.toByteArray();
+        } catch (IOException e) {
+            log.error("生成Excel模板失败", e);
+            throw new BusinessException(500, "生成模板失败");
+        }
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ImportResultVO importUsers(MultipartFile file, String operator) {
+        ImportResultVO result = new ImportResultVO();
+        List<ImportError> errors = new ArrayList<>();
+
+        String filename = file.getOriginalFilename();
+        if (filename == null || (!filename.endsWith(".xlsx") && !filename.endsWith(".xls"))) {
+            throw new BusinessException(400, "只支持 .xlsx 或 .xls 格式的文件");
+        }
+
+        List<UserImportVO> importList;
+        try {
+            importList = EasyExcel.read(file.getInputStream())
+                    .head(UserImportVO.class)
+                    .sheet()
+                    .doReadSync();
+        } catch (IOException e) {
+            log.error("读取Excel文件失败", e);
+            throw new BusinessException(500, "读取Excel文件失败");
+        }
+
+        if (importList == null || importList.isEmpty()) {
+            throw new BusinessException(400, "Excel文件中没有数据");
+        }
+
+        if (importList.size() > 1000) {
+            throw new BusinessException(400, "单次导入最多支持1000条数据");
+        }
+
+        result.setTotalCount(importList.size());
+
+        List<SysDept> depts = sysDeptMapper.selectList(
+                new LambdaQueryWrapper<SysDept>().eq(SysDept::getDeleted, 0).eq(SysDept::getStatus, 1)
+        );
+        Map<String, SysDept> deptMap = depts.stream()
+                .collect(Collectors.toMap(SysDept::getDeptName, d -> d, (d1, d2) -> d1));
+
+        List<SysPost> posts = sysPostMapper.selectList(
+                new LambdaQueryWrapper<SysPost>().eq(SysPost::getDeleted, 0).eq(SysPost::getStatus, 1)
+        );
+        Map<String, SysPost> postMap = posts.stream()
+                .collect(Collectors.toMap(SysPost::getPostName, p -> p, (p1, p2) -> p1));
+
+        List<SysRole> roles = sysRoleMapper.selectList(
+                new LambdaQueryWrapper<SysRole>().eq(SysRole::getDeleted, 0).eq(SysRole::getStatus, 1)
+        );
+        Map<String, SysRole> roleMap = roles.stream()
+                .collect(Collectors.toMap(SysRole::getRoleName, r -> r, (r1, r2) -> r1));
+
+        List<String> existingUsernames = sysUserMapper.selectList(
+                new LambdaQueryWrapper<SysUser>().eq(SysUser::getDeleted, 0)
+        ).stream().map(SysUser::getUsername).collect(Collectors.toList());
+
+        Set<String> usernameSet = new HashSet<>();
+        List<UserImportVO> validList = new ArrayList<>();
+        List<SysUser> userList = new ArrayList<>();
+        List<SysUserRole> userRoleList = new ArrayList<>();
+
+        String phoneRegex = "^1[3-9]\\d{9}$";
+
+        for (int i = 0; i < importList.size(); i++) {
+            int rowNum = i + 2;
+            UserImportVO vo = importList.get(i);
+            List<String> errorMsgs = new ArrayList<>();
+
+            if (StrUtil.isBlank(vo.getUsername())) {
+                errorMsgs.add("工号不能为空");
+            } else if (existingUsernames.contains(vo.getUsername()) || usernameSet.contains(vo.getUsername())) {
+                errorMsgs.add("工号已存在");
+            } else {
+                usernameSet.add(vo.getUsername());
+            }
+
+            if (StrUtil.isBlank(vo.getRealName())) {
+                errorMsgs.add("姓名不能为空");
+            }
+
+            if (StrUtil.isBlank(vo.getPhone())) {
+                errorMsgs.add("手机号不能为空");
+            } else if (!ReUtil.isMatch(phoneRegex, vo.getPhone())) {
+                errorMsgs.add("手机号格式不正确");
+            }
+
+            SysDept dept = null;
+            if (StrUtil.isBlank(vo.getDeptName())) {
+                errorMsgs.add("部门名称不能为空");
+            } else {
+                dept = deptMap.get(vo.getDeptName());
+                if (dept == null) {
+                    errorMsgs.add("部门名称不存在");
+                }
+            }
+
+            SysPost post = null;
+            if (StrUtil.isBlank(vo.getPostName())) {
+                errorMsgs.add("岗位名称不能为空");
+            } else {
+                post = postMap.get(vo.getPostName());
+                if (post == null) {
+                    errorMsgs.add("岗位名称不存在");
+                } else if (dept != null && !post.getDeptId().equals(dept.getId())) {
+                    errorMsgs.add("岗位不属于该部门");
+                }
+            }
+
+            SysRole role = null;
+            if (StrUtil.isBlank(vo.getRoleName())) {
+                errorMsgs.add("角色名称不能为空");
+            } else {
+                role = roleMap.get(vo.getRoleName());
+                if (role == null) {
+                    errorMsgs.add("角色名称不存在");
+                }
+            }
+
+            if (!errorMsgs.isEmpty()) {
+                errors.add(new ImportError(rowNum, String.join("；", errorMsgs), vo));
+            } else {
+                validList.add(vo);
+
+                SysUser user = new SysUser();
+                user.setUsername(vo.getUsername());
+                user.setRealName(vo.getRealName());
+                user.setPhone(vo.getPhone());
+                user.setEmail(vo.getEmail());
+                user.setDeptId(dept.getId());
+                user.setPostId(post.getId());
+                user.setRemark(vo.getRemark());
+                user.setStatus(1);
+                user.setCreateBy(operator);
+                user.setUpdateBy(operator);
+                user.setPassword(passwordEncoder.encode(generateRandomPassword()));
+                userList.add(user);
+
+                SysUserRole userRole = new SysUserRole();
+                userRole.setRoleId(role.getId());
+                userRole.setCreateTime(LocalDateTime.now());
+                userRoleList.add(userRole);
+            }
+        }
+
+        if (!errors.isEmpty()) {
+            result.setSuccessCount(0);
+            result.setFailCount(errors.size());
+            result.setErrors(errors);
+            return result;
+        }
+
+        for (SysUser user : userList) {
+            sysUserMapper.insert(user);
+        }
+
+        for (int i = 0; i < userRoleList.size(); i++) {
+            userRoleList.get(i).setUserId(userList.get(i).getId());
+            sysUserRoleMapper.insert(userRoleList.get(i));
+        }
+
+        result.setSuccessCount(validList.size());
+        result.setFailCount(0);
+        log.info("批量导入用户成功，共{}条", validList.size());
+
+        return result;
     }
 }

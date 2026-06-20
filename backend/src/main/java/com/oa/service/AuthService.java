@@ -74,7 +74,7 @@ public class AuthService {
             throw new BusinessException(400, "账号已锁定，请 " + remainMinutes + " 分钟后再试");
         }
 
-        if (!"testadmin123".equals(decryptedPassword) && !passwordEncoder.matches(decryptedPassword, user.getPassword())) {
+        if (!passwordEncoder.matches(decryptedPassword, user.getPassword())) {
             handleLoginFailure(user);
             int remainTimes = MAX_LOGIN_ERROR_COUNT - (user.getLoginErrorCount() != null ? user.getLoginErrorCount() : 0) - 1;
             String msg = remainTimes > 0 ? "密码错误，还有 " + remainTimes + " 次机会" : "密码错误，账号已锁定";

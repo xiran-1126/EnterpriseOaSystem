@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Modal, Form, Input, Radio, message, Space, Button, Typography } from 'antd'
 import { KeyOutlined, CopyOutlined, ReloadOutlined } from '@ant-design/icons'
-import { resetUserPassword } from '@/api/system'
+import JSEncrypt from 'jsencrypt'
+import { resetUserPassword, getPublicKey } from '@/api/system'
 import type { UserVO } from '@/types/system'
 
 const { Text } = Typography
@@ -19,6 +20,8 @@ const ResetPasswordModal = ({ visible, userData, onCancel, onSuccess }: ResetPas
   const [resetMode, setResetMode] = useState<'auto' | 'manual'>('auto')
   const [generatedPassword, setGeneratedPassword] = useState('')
   const [copied, setCopied] = useState(false)
+  const [publicKey, setPublicKey] = useState('')
+  const [loadingPublicKey, setLoadingPublicKey] = useState(false)
 
   const generateRandomPassword = () => {
     const upperCase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -57,12 +60,40 @@ const ResetPasswordModal = ({ visible, userData, onCancel, onSuccess }: ResetPas
     }
   }
 
+  const encryptPassword = (password: string): string => {
+    if (!publicKey) {
+      return password
+    }
+    const encrypt = new JSEncrypt()
+    encrypt.setPublicKey(publicKey)
+    const encrypted = encrypt.encrypt(password)
+    if (encrypted === false) {
+      message.error('密码加密失败，请刷新页面重试')
+      return password
+    }
+    return encrypted
+  }
+
+  const fetchPublicKey = async () => {
+    try {
+      setLoadingPublicKey(true)
+      const result = await getPublicKey()
+      setPublicKey(result.publicKey)
+    } catch (error) {
+      console.error('获取公钥失败', error)
+      message.error('获取公钥失败，请刷新页面重试')
+    } finally {
+      setLoadingPublicKey(false)
+    }
+  }
+
   useEffect(() => {
     if (visible) {
       form.resetFields()
       setResetMode('auto')
       setGeneratedPassword('')
       setCopied(false)
+      fetchPublicKey()
       if (resetMode === 'auto') {
         generateRandomPassword()
       }
@@ -75,13 +106,19 @@ const ResetPasswordModal = ({ visible, userData, onCancel, onSuccess }: ResetPas
         await form.validateFields()
       }
 
+      if (!publicKey) {
+        message.error('公钥未加载完成，请稍候')
+        return
+      }
+
       setLoading(true)
 
       const newPassword = resetMode === 'auto' ? generatedPassword : form.getFieldValue('newPassword')
+      const encryptedPassword = encryptPassword(newPassword)
 
       const result = await resetUserPassword({
         userId: userData!.id,
-        newPassword,
+        newPassword: encryptedPassword,
       })
 
       if (resetMode === 'auto') {
@@ -106,7 +143,7 @@ const ResetPasswordModal = ({ visible, userData, onCancel, onSuccess }: ResetPas
       open={visible}
       onCancel={onCancel}
       onOk={handleSubmit}
-      confirmLoading={loading}
+      confirmLoading={loading || loadingPublicKey}
       width={500}
       okText="确认重置"
       cancelText="取消"

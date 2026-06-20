@@ -13,6 +13,8 @@ import {
   Tooltip,
   TreeSelect,
   Checkbox,
+  Upload,
+  Modal,
 } from 'antd'
 import {
   PlusOutlined,
@@ -25,8 +27,12 @@ import {
   KeyOutlined,
   ExportOutlined,
   SettingOutlined,
+  DownloadOutlined,
+  ImportOutlined,
+  FileExcelOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType, TableRowSelection } from 'antd/es/table/interface'
+import type { UploadProps } from 'antd'
 import dayjs from 'dayjs'
 import {
   getUserPage,
@@ -39,8 +45,10 @@ import {
   getDeptTree,
   getPostsByDeptId,
   exportUsers,
+  downloadImportTemplate,
+  importUsers,
 } from '@/api/system'
-import type { UserVO, UserQueryDTO, SysDept, SysPost } from '@/types/system'
+import type { UserVO, UserQueryDTO, SysDept, SysPost, ImportResultVO, ImportError } from '@/types/system'
 import UserFormModal from './components/UserFormModal'
 import ResetPasswordModal from './components/ResetPasswordModal'
 import './style.css'
@@ -64,6 +72,9 @@ const UserManagementPage = () => {
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [resetPwdModalVisible, setResetPwdModalVisible] = useState(false)
   const [currentUser, setCurrentUser] = useState<UserVO | null>(null)
+  const [importModalVisible, setImportModalVisible] = useState(false)
+  const [importResult, setImportResult] = useState<ImportResultVO | null>(null)
+  const [importLoading, setImportLoading] = useState(false)
 
   const fetchUserList = useCallback(async () => {
     setLoading(true)
@@ -255,6 +266,140 @@ const UserManagementPage = () => {
       console.error('导出用户失败', error)
     }
   }
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob = await downloadImportTemplate()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = '用户导入模板.xlsx'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      message.success('模板下载成功')
+    } catch (error) {
+      console.error('下载模板失败', error)
+    }
+  }
+
+  const handleImport: UploadProps['beforeUpload'] = async (file) => {
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls')
+    if (!isExcel) {
+      message.error('只支持 .xlsx 或 .xls 格式的文件')
+      return Upload.LIST_IGNORE
+    }
+    const isLt10M = file.size / 1024 / 1024 < 10
+    if (!isLt10M) {
+      message.error('文件大小不能超过 10MB')
+      return Upload.LIST_IGNORE
+    }
+
+    setImportLoading(true)
+    try {
+      const result = await importUsers(file)
+      setImportResult(result)
+      setImportModalVisible(true)
+      if (result.failCount === 0) {
+        message.success(`成功导入 ${result.successCount} 条数据`)
+        fetchUserList()
+      } else {
+        message.warning(`导入完成：成功 ${result.successCount} 条，失败 ${result.failCount} 条`)
+      }
+    } catch (error) {
+      console.error('导入用户失败', error)
+    } finally {
+      setImportLoading(false)
+    }
+    return false
+  }
+
+  const handleExportErrors = () => {
+    if (!importResult || importResult.errors.length === 0) return
+    const errorData = importResult.errors.map((err) => ({
+      行号: err.rowNum,
+      错误信息: err.errorMsg,
+      工号: err.rowData.username,
+      姓名: err.rowData.realName,
+      手机号: err.rowData.phone,
+      邮箱: err.rowData.email || '',
+      部门名称: err.rowData.deptName,
+      岗位名称: err.rowData.postName,
+      角色名称: err.rowData.roleName,
+      备注: err.rowData.remark || '',
+    }))
+
+    const headers = Object.keys(errorData[0]).join(',')
+    const rows = errorData.map((row) =>
+      Object.values(row)
+        .map((val) => `"${val}"`)
+        .join(',')
+    )
+    const csvContent = [headers, ...rows].join('\n')
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = '导入错误明细.csv'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    message.success('错误明细导出成功')
+  }
+
+  const errorColumns: ColumnsType<ImportError> = [
+    {
+      title: '行号',
+      dataIndex: 'rowNum',
+      key: 'rowNum',
+      width: 80,
+    },
+    {
+      title: '错误信息',
+      dataIndex: 'errorMsg',
+      key: 'errorMsg',
+      width: 300,
+      render: (text: string) => <span style={{ color: '#ff4d4f' }}>{text}</span>,
+    },
+    {
+      title: '工号',
+      dataIndex: ['rowData', 'username'],
+      key: 'username',
+      width: 100,
+    },
+    {
+      title: '姓名',
+      dataIndex: ['rowData', 'realName'],
+      key: 'realName',
+      width: 100,
+    },
+    {
+      title: '手机号',
+      dataIndex: ['rowData', 'phone'],
+      key: 'phone',
+      width: 130,
+    },
+    {
+      title: '部门',
+      dataIndex: ['rowData', 'deptName'],
+      key: 'deptName',
+      width: 120,
+    },
+    {
+      title: '岗位',
+      dataIndex: ['rowData', 'postName'],
+      key: 'postName',
+      width: 120,
+    },
+    {
+      title: '角色',
+      dataIndex: ['rowData', 'roleName'],
+      key: 'roleName',
+      width: 120,
+    },
+  ]
 
   const columns: ColumnsType<UserVO> = [
     {
@@ -523,6 +668,20 @@ const UserManagementPage = () => {
           <Button icon={<ExportOutlined />} onClick={handleExport}>
             导出用户花名册
           </Button>
+          <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>
+            下载导入模板
+          </Button>
+          <Upload
+            name="file"
+            accept=".xlsx,.xls"
+            showUploadList={false}
+            beforeUpload={handleImport}
+            disabled={importLoading}
+          >
+            <Button icon={<ImportOutlined />} loading={importLoading}>
+              导入用户
+            </Button>
+          </Upload>
         </Space>
         <Space>
           <Checkbox checked={showDeleted} onChange={(e) => setShowDeleted(e.target.checked)}>
@@ -584,6 +743,78 @@ const UserManagementPage = () => {
           setResetPwdModalVisible(false)
         }}
       />
+
+      <Modal
+        title={
+          <Space>
+            <FileExcelOutlined style={{ color: '#52c41a' }} />
+            <span>导入结果</span>
+          </Space>
+        }
+        open={importModalVisible}
+        width={1000}
+        onCancel={() => setImportModalVisible(false)}
+        footer={
+          <Space>
+            {importResult && importResult.failCount > 0 && (
+              <Button type="primary" icon={<ExportOutlined />} onClick={handleExportErrors}>
+                导出错误明细
+              </Button>
+            )}
+            <Button onClick={() => setImportModalVisible(false)}>关闭</Button>
+          </Space>
+        }
+      >
+        {importResult && (
+          <div>
+            <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
+              <Space size={32}>
+                <div>
+                  <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>总条数</div>
+                  <div style={{ fontSize: 24, fontWeight: 'bold' }}>{importResult.totalCount}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>成功</div>
+                  <div style={{ fontSize: 24, fontWeight: 'bold', color: '#52c41a' }}>
+                    {importResult.successCount}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>失败</div>
+                  <div style={{ fontSize: 24, fontWeight: 'bold', color: '#ff4d4f' }}>
+                    {importResult.failCount}
+                  </div>
+                </div>
+              </Space>
+            </div>
+
+            {importResult.failCount > 0 && (
+              <div>
+                <h4 style={{ marginBottom: 12 }}>错误明细：</h4>
+                <Table
+                  rowKey={(record) => `${record.rowNum}-${record.errorMsg}`}
+                  columns={errorColumns}
+                  dataSource={importResult.errors}
+                  pagination={{
+                    pageSize: 10,
+                    showSizeChanger: true,
+                    pageSizeOptions: ['10', '20', '50'],
+                    showTotal: (total) => `共 ${total} 条错误`,
+                  }}
+                  scroll={{ x: 1100 }}
+                />
+              </div>
+            )}
+
+            {importResult.failCount === 0 && (
+              <div style={{ textAlign: 'center', padding: 40 }}>
+                <div style={{ fontSize: 48, color: '#52c41a', marginBottom: 16 }}>✓</div>
+                <div style={{ fontSize: 16, color: '#666' }}>全部导入成功！</div>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

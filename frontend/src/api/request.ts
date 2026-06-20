@@ -26,6 +26,9 @@ request.interceptors.request.use(
 
 request.interceptors.response.use(
   (response: AxiosResponse) => {
+    if (response.config.responseType === 'blob') {
+      return response.data as unknown as AxiosResponse
+    }
     const res = response.data as ApiResponse
     if (res.code !== 200) {
       message.error(res.message || '请求失败')
@@ -68,6 +71,26 @@ export const put = <T = unknown>(url: string, data?: unknown, config?: AxiosRequ
 
 export const del = <T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T> => {
   return request.delete(url, config) as unknown as Promise<T>
+}
+
+export const download = (url: string, config?: AxiosRequestConfig): Promise<Blob> => {
+  return request.get(url, {
+    ...config,
+    responseType: 'blob',
+  }) as unknown as Promise<Blob>
+}
+
+export const upload = <T = unknown>(
+  url: string,
+  data: FormData,
+  config?: AxiosRequestConfig
+): Promise<T> => {
+  return request.post(url, data, {
+    ...config,
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  }) as unknown as Promise<T>
 }
 
 export default request

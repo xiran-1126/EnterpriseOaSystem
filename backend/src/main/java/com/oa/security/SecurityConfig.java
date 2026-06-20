@@ -53,7 +53,8 @@ public class SecurityConfig {
                                 "/auth/captcha",
                                 "/auth/forgot-password/**",
                                 "/auth/send-sms-code",
-                                "/auth/reset-password"
+                                "/auth/reset-password",
+                                "/config/public-key"
                         ).permitAll()
                         .requestMatchers(
                                 "/h2-console/**",

@@ -98,3 +98,31 @@ export interface SysRole {
   status: number
   createTime: string
 }
+
+export interface PublicKeyVO {
+  publicKey: string
+}
+
+export interface UserImportVO {
+  username: string
+  realName: string
+  phone: string
+  email?: string
+  deptName: string
+  postName: string
+  roleName: string
+  remark?: string
+}
+
+export interface ImportError {
+  rowNum: number
+  errorMsg: string
+  rowData: UserImportVO
+}
+
+export interface ImportResultVO {
+  totalCount: number
+  successCount: number
+  failCount: number
+  errors: ImportError[]
+}

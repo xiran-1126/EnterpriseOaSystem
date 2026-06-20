@@ -3,6 +3,7 @@ package com.oa.dto;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class UserQueryDTO {
@@ -34,4 +35,6 @@ public class UserQueryDTO {
     private String isAsc = "asc";
 
     private Boolean showDeleted = false;
+
+    private List<Long> deptIds;
 }

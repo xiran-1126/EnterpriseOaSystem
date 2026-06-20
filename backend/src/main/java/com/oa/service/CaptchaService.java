@@ -56,11 +56,6 @@ public class CaptchaService {
             return false;
         }
 
-        if ("1234".equals(captcha.trim())) {
-            captchaStore.remove(captchaKey);
-            return true;
-        }
-
         String storedCaptcha = captchaStore.get(captchaKey);
         captchaStore.remove(captchaKey);
 

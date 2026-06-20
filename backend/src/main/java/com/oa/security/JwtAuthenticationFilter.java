@@ -1,5 +1,7 @@
 package com.oa.security;
 
+import com.oa.entity.SysUser;
+import com.oa.mapper.SysUserMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,8 +17,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -24,6 +26,8 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final SysUserMapper sysUserMapper;
+    private final TokenService tokenService;
 
     @Value("${jwt.header}")
     private String header;
@@ -40,23 +44,29 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (authHeader != null && authHeader.startsWith(prefix + " ")) {
             String token = authHeader.substring(prefix.length() + 1);
 
-            if (jwtTokenProvider.validateToken(token)) {
+            if (jwtTokenProvider.validateToken(token) && tokenService.validateToken(token)) {
                 String username = jwtTokenProvider.getUsernameFromToken(token);
                 Long userId = jwtTokenProvider.getUserIdFromToken(token);
 
                 if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                    List<SimpleGrantedAuthority> authorities = Collections.singletonList(
-                            new SimpleGrantedAuthority("ROLE_USER")
-                    );
+                    SysUser user = sysUserMapper.selectById(userId);
+                    if (user != null && user.getDeleted() == 0 && user.getStatus() == 1) {
+                        List<String> roles = sysUserMapper.selectRoleCodesByUserId(userId);
+                        List<SimpleGrantedAuthority> authorities = roles.stream()
+                                .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
+                                .collect(Collectors.toList());
 
-                    UsernamePasswordAuthenticationToken authentication =
-                            new UsernamePasswordAuthenticationToken(
-                                    new LoginUser(userId, username),
-                                    null,
-                                    authorities
-                            );
-                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                        LoginUser loginUser = new LoginUser(userId, username, user.getDeptId(), roles);
+
+                        UsernamePasswordAuthenticationToken authentication =
+                                new UsernamePasswordAuthenticationToken(
+                                        loginUser,
+                                        null,
+                                        authorities
+                                );
+                        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        SecurityContextHolder.getContext().setAuthentication(authentication);
+                    }
                 }
             }
         }

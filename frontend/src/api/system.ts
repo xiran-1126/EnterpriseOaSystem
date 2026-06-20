@@ -1,4 +1,4 @@
-import { get, post, put, del } from './request'
+import { get, post, put, del, download, upload } from './request'
 import type {
   UserVO,
   UserQueryDTO,
@@ -9,6 +9,8 @@ import type {
   SysDept,
   SysPost,
   SysRole,
+  PublicKeyVO,
+  ImportResultVO,
 } from '@/types/system'
 
 export const getUserPage = (params: UserQueryDTO): Promise<PageResult<UserVO>> => {
@@ -77,4 +79,18 @@ export const getPostsByDeptId = (deptId: number): Promise<SysPost[]> => {
 
 export const getAllRoles = (): Promise<SysRole[]> => {
   return get<SysRole[]>('/system/user/role/list')
+}
+
+export const getPublicKey = (): Promise<PublicKeyVO> => {
+  return get<PublicKeyVO>('/config/public-key')
+}
+
+export const downloadImportTemplate = (): Promise<Blob> => {
+  return download('/system/user/import/template')
+}
+
+export const importUsers = (file: File): Promise<ImportResultVO> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return upload<ImportResultVO>('/system/user/import', formData)
 }
