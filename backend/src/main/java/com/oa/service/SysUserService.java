@@ -31,6 +31,7 @@ import com.oa.mapper.SysUserRoleMapper;
 import com.oa.vo.ImportError;
 import com.oa.vo.ImportResultVO;
 import com.oa.vo.PageResult;
+import com.oa.vo.UserExportVO;
 import com.oa.vo.UserImportVO;
 import com.oa.vo.UserVO;
 import lombok.RequiredArgsConstructor;
@@ -356,22 +357,39 @@ public class SysUserService {
         }
     }
 
-    public List<UserVO> exportUsers(UserQueryDTO query) {
+    public byte[] exportUsersExcel(UserQueryDTO query) {
         List<UserVO> list = sysUserMapper.selectUserList(query);
+        List<UserExportVO> exportList = new ArrayList<>();
         for (UserVO user : list) {
+            UserExportVO exportVO = new UserExportVO();
+            exportVO.setUsername(user.getUsername());
+            exportVO.setRealName(user.getRealName());
+            exportVO.setPhone(user.getPhone());
+            exportVO.setEmail(user.getEmail());
+            exportVO.setDeptName(user.getDeptName());
+            exportVO.setPostName(user.getPostName());
+            exportVO.setStatusText(user.getStatus() == 1 ? "启用" : "禁用");
+            exportVO.setRemark(user.getRemark());
+            exportVO.setCreateTime(user.getCreateTime() != null ? user.getCreateTime().toString() : "");
+
             if (user.getId() != null) {
                 List<Long> roleIds = sysUserMapper.selectRoleIdsByUserId(user.getId());
-                user.setRoleIds(roleIds);
                 if (roleIds != null && !roleIds.isEmpty()) {
                     List<SysRole> roles = sysRoleMapper.selectBatchIds(roleIds);
                     String roleNames = roles.stream()
                             .map(SysRole::getRoleName)
                             .collect(Collectors.joining(", "));
-                    user.setRoleNames(roleNames);
+                    exportVO.setRoleNames(roleNames);
                 }
             }
+            exportList.add(exportVO);
         }
-        return list;
+
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        EasyExcel.write(outputStream, UserExportVO.class)
+                .sheet("用户花名册")
+                .doWrite(exportList);
+        return outputStream.toByteArray();
     }
 
     private String generateRandomPassword() {

@@ -154,13 +154,18 @@ public class SysUserController {
         return Result.success("批量删除成功", null);
     }
 
-    @Operation(summary = "导出用户列表")
+    @Operation(summary = "导出用户花名册")
     @OperationLog(moduleName = "用户管理", businessType = BusinessType.EXPORT)
     @GetMapping("/export")
-    public Result<List<UserVO>> exportUsers(UserQueryDTO query,
-                                            @AuthenticationPrincipal LoginUser loginUser) {
+    public ResponseEntity<byte[]> exportUsers(UserQueryDTO query,
+                                              @AuthenticationPrincipal LoginUser loginUser) {
         PermissionUtils.checkAdminPermission(loginUser);
-        return Result.success(sysUserService.exportUsers(query));
+        byte[] data = sysUserService.exportUsersExcel(query);
+        String filename = URLEncoder.encode("用户花名册.xlsx", StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + filename)
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(data);
     }
 
     @Operation(summary = "获取部门树列表")

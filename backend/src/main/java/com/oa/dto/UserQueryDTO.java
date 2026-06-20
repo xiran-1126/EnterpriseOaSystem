@@ -2,7 +2,6 @@ package com.oa.dto;
 
 import lombok.Data;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
@@ -22,9 +21,9 @@ public class UserQueryDTO {
 
     private Integer status;
 
-    private LocalDateTime startTime;
+    private String startTime;
 
-    private LocalDateTime endTime;
+    private String endTime;
 
     private Integer pageNum = 1;
 

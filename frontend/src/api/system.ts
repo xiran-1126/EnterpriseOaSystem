@@ -65,8 +65,8 @@ export const batchDeleteUsers = (userIds: number[]): Promise<void> => {
   return del<void>('/system/user/batch', { data: userIds })
 }
 
-export const exportUsers = (params: UserQueryDTO): Promise<UserVO[]> => {
-  return get<UserVO[]>('/system/user/export', { params })
+export const exportUsers = (params: UserQueryDTO): Promise<Blob> => {
+  return download('/system/user/export', { params })
 }
 
 export const getDeptTree = (): Promise<SysDept[]> => {

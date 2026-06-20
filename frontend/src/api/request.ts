@@ -27,6 +27,17 @@ request.interceptors.request.use(
 request.interceptors.response.use(
   (response: AxiosResponse) => {
     if (response.config.responseType === 'blob') {
+      const contentType = response.headers['content-type'] || ''
+      if (contentType.includes('application/json')) {
+        return response.data.text().then((text: string) => {
+          const res = JSON.parse(text) as ApiResponse
+          if (res.code !== 200) {
+            message.error(res.message || '请求失败')
+            return Promise.reject(new Error(res.message || '请求失败'))
+          }
+          return res.data as unknown as AxiosResponse
+        })
+      }
       return response.data as unknown as AxiosResponse
     }
     const res = response.data as ApiResponse

@@ -1,7 +1,9 @@
 com\oa\common\Result.class
 com\oa\security\JwtTokenProvider.class
+com\oa\config\WebMvcConfig.class
 com\oa\dto\LoginResponse$UserInfoVO.class
 com\oa\mapper\SysRoleMapper.class
+com\oa\vo\UserExportVO.class
 com\oa\controller\AuthController.class
 com\oa\mapper\SysLoginLogMapper.class
 com\oa\vo\PublicKeyVO.class

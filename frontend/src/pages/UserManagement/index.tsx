@@ -259,9 +259,16 @@ const UserManagementPage = () => {
       }
       delete (params as any).createTime
 
-      const data = await exportUsers(params)
-      message.success(`成功导出 ${data.length} 条数据`)
-      console.log('导出数据:', data)
+      const blob = await exportUsers(params)
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = '用户花名册.xlsx'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      message.success('导出成功')
     } catch (error) {
       console.error('导出用户失败', error)
     }
